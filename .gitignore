@@ -1,0 +1,9 @@
+build/
+devel/
+logs/
+*.pyc
+__pycache__/
+.vscode/
+.idea/
+src/turtlebot3-noetic-devel/
+src/tb3_distributed_control/

@@ -1,0 +1,135 @@
+<launch>
+    <!-- ======================= 输入参数定义 ======================= -->
+    <!-- 仿真环境大小参数 (由formation.launch传入) -->
+    <arg name="map_size_x"/>    <!-- 地图X轴范围 -->
+    <arg name="map_size_y"/>    <!-- 地图Y轴范围 -->
+    <arg name="map_size_z"/>    <!-- 地图Z轴范围 -->
+    
+    <!-- 无人机初始位置参数 -->
+    <arg name="init_x"/>        <!-- 初始X坐标 -->
+    <arg name="init_y"/>        <!-- 初始Y坐标 -->
+    <arg name="init_z"/>        <!-- 初始Z坐标(高度) -->
+    
+    <!-- 无人机标识和里程计话题 -->
+    <arg name="drone_id"/>      <!-- 无人机唯一ID (0-6) -->
+    <arg name="odom_topic"/>    <!-- 里程计话题名称 -->
+    
+    <!-- 动态障碍物数量 (暂未使用) -->
+    <arg name="obj_num" value="10" />
+    
+    <!-- ======================= EGO-Planner核心算法配置 ======================= -->
+    <!-- 包含完整的规划算法参数和传感器配置 -->
+    <include file="$(find ego_planner)/launch/advanced_param.xml">
+        <!-- 基础参数 -->
+        <arg name="drone_id" value="$(arg drone_id)"/>
+        <arg name="map_size_x_" value="$(arg map_size_x)"/>
+        <arg name="map_size_y_" value="$(arg map_size_y)"/>
+        <arg name="map_size_z_" value="$(arg map_size_z)"/>
+        <arg name="odometry_topic" value="$(arg odom_topic)"/>
+        <arg name="obj_num_set" value="$(arg obj_num)" />
+        
+        <!-- ============ 传感器配置 ============ -->
+        <!-- 深度相机位姿话题 (6DOF位姿信息) -->
+        <arg name="camera_pose_topic" value="pcl_render_node/camera_pose"/>
+        <!-- 深度图像话题 (640x480分辨率) -->
+        <arg name="depth_topic" value="pcl_render_node/depth"/>
+        <!-- 点云话题 (激光雷达模拟数据) -->
+        <arg name="cloud_topic" value="pcl_render_node/cloud"/>
+        
+        <!-- 深度相机内参 (用于像素坐标到3D坐标转换) -->
+        <arg name="cx" value="321.04638671875"/>      <!-- 光心X坐标 -->
+        <arg name="cy" value="243.44969177246094"/>   <!-- 光心Y坐标 -->
+        <arg name="fx" value="387.229248046875"/>     <!-- X轴焦距 -->
+        <arg name="fy" value="387.229248046875"/>     <!-- Y轴焦距 -->
+        
+        <!-- ============ 动力学约束 ============ -->
+        <arg name="max_vel" value="1.5" />           <!-- 最大速度: 1.5m/s -->
+        <arg name="max_acc" value="6.0" />           <!-- 最大加速度: 6m/s² -->
+        <arg name="max_jer" value="20.0" />          <!-- 最大急动度: 20m/s³ -->
+        
+        <!-- ============ 规划参数 ============ -->
+        <!-- 规划视野: 建议设为感知距离的1.5倍 -->
+        <arg name="planning_horizon" value="7.5" />
+        <!-- 是否使用区别性轨迹 (用于多机避碰) -->
+        <arg name="use_distinctive_trajs" value="false" />
+        
+        <!-- ============ 飞行模式 ============ -->
+        <!-- 1: 使用2D导航目标点选择 -->
+        <!-- 2: 使用预定义全局路点 -->
+        <arg name="flight_type" value="2" />
+        
+        <!-- ============ 全局路点配置 ============ -->
+        <!-- 生成连接所有路点的最小快照轨迹 -->
+        <arg name="point_num" value="4" />           <!-- 路点总数: 5个 -->
+        
+        <!-- 路点0: 南方 -->
+        <arg name="point0_x" value="0" />
+        <arg name="point0_y" value="-30" />
+        <arg name="point0_z" value="0.0" />
+        
+        <!-- 路点1: 东方 -->
+        <arg name="point1_x" value="30" />
+        <arg name="point1_y" value="0" />
+        <arg name="point1_z" value="0.0" />
+        
+        <!-- 路点2: 北方 -->
+        <arg name="point2_x" value="0.0" />
+        <arg name="point2_y" value="30.0" />
+        <arg name="point2_z" value="0.0" />
+        
+        <!-- 路点3: 西方 -->
+        <arg name="point3_x" value="-30.0" />
+        <arg name="point3_y" value="0.0" />
+        <arg name="point3_z" value="0.0" />
+        
+        <!-- 路点4: 中心终点 -->
+        <arg name="point4_x" value="0.0" />
+        <arg name="point4_y" value="0.0" />
+        <arg name="point4_z" value="0.0" />
+    </include>
+    
+    <!-- ======================= 轨迹服务器 ======================= -->
+    <!-- 负责轨迹执行和位置命令发布 -->
+    <node pkg="ego_planner" name="drone_$(arg drone_id)_traj_server" type="traj_server" output="screen">
+        <!-- 话题重映射: 连接规划器输出和控制器输入 -->
+        <remap from="position_cmd" to="drone_$(arg drone_id)_planning/pos_cmd"/>
+        <remap from="~planning/trajectory" to="drone_$(arg drone_id)_planning/trajectory"/>
+        <!-- 轨迹前瞻时间: 1秒 -->
+        <param name="traj_server/time_forward" value="1.0" type="double"/>
+    </node>
+    
+    <!-- ======================= 仿真器模块 ======================= -->
+    <!-- 启动完整的无人机仿真系统 -->
+    <include file="$(find ego_planner)/launch/simulator.xml">
+        <arg name="drone_id" value="$(arg drone_id)"/>
+        <arg name="map_size_x_" value="$(arg map_size_x)"/>
+        <arg name="map_size_y_" value="$(arg map_size_y)"/>
+        <arg name="map_size_z_" value="$(arg map_size_z)"/>
+        <arg name="init_x_" value="$(arg init_x)"/>
+        <arg name="init_y_" value="$(arg init_y)"/>
+        <arg name="init_z_" value="$(arg init_z)"/>
+        <arg name="odometry_topic" value="$(arg odom_topic)" />
+    </include>
+    
+    <!-- 
+    ======================= 系统架构总结 =======================
+    
+    单架无人机完整系统包含:
+    1. EGO-Planner规划器 (advanced_param.xml)
+       - 环境感知和建图
+       - 路径搜索和轨迹优化  
+       - 多机协调和避碰
+       
+    2. 轨迹服务器 (traj_server)
+       - 轨迹跟踪和执行
+       - 位置命令生成
+       
+    3. 仿真环境 (simulator.xml)
+       - 无人机动力学仿真
+       - 传感器数据生成
+       - 可视化和监控
+       
+    飞行模式: 循环访问5个路点 (南→东→北→西→中心)
+    每架无人机独立规划，通过集群通信协调避碰
+    -->
+</launch>

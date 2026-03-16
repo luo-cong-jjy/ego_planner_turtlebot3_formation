@@ -1,0 +1,215 @@
+<launch>
+    <!-- ======================= 输入参数定义 ======================= -->
+    <!-- 这些参数由上层launch文件(如run_in_sim.launch)传入 -->
+    
+    <!-- 无人机初始位置坐标 -->
+    <arg name="init_x_"/>      <!-- 初始X坐标(米) -->
+    <arg name="init_y_"/>      <!-- 初始Y坐标(米) -->
+    <arg name="init_z_"/>      <!-- 初始Z坐标(高度,米) -->
+    
+    <!-- 动态障碍物配置 -->
+    <arg name="obj_num" value="1" />    <!-- 动态障碍物数量(暂未使用) -->
+    
+    <!-- 仿真环境尺寸 -->
+    <arg name="map_size_x_"/>   <!-- 地图X轴范围(米) -->
+    <arg name="map_size_y_"/>   <!-- 地图Y轴范围(米) -->
+    <arg name="map_size_z_"/>   <!-- 地图Z轴高度(米) -->
+    
+    <!-- 障碍物生成参数 -->
+    <arg name="c_num"/>         <!-- 圆形障碍物数量 -->
+    <arg name="p_num"/>         <!-- 多边形障碍物数量 -->
+    <arg name="min_dist"/>      <!-- 障碍物间最小安全距离(米) -->
+    
+    <!-- ROS通信配置 -->
+    <arg name="odometry_topic"/>    <!-- 里程计话题名称 -->
+    <arg name="drone_id"/>          <!-- 无人机唯一标识符(0-6) -->
+
+    <!-- ======================= 地图生成器选择 ======================= -->
+    <!-- 注意: 以下两种地图生成器二选一，用CDATA注释掉不需要的 -->
+    
+    <!-- 【选项1】随机森林地图生成器 (当前被注释掉，不会运行) -->
+    <![CDATA[node pkg ="map_generator" name ="random_forest" type ="random_forest" output = "screen">    
+        <!-- 里程计话题映射 -->
+        <remap from="~odometry"   to="$(arg odometry_topic)"/>    
+        
+        <!-- 地图物理尺寸设置 -->
+        <param name="map/x_size"     value="$(arg map_size_x_)" />    <!-- 地图长度 -->
+        <param name="map/y_size"     value="$(arg map_size_y_)" />    <!-- 地图宽度 -->
+        <param name="map/z_size"     value="$(arg map_size_z_)" />    <!-- 地图高度 -->
+        <param name="map/resolution" value="0.1"/>                   <!-- 网格分辨率: 0.1米/格 -->        
+
+        <!-- 随机生成控制 -->
+        <param name="ObstacleShape/seed" value="1"/>                 <!-- 随机种子(固定为1,保证可重复) -->
+        <param name="map/obs_num"    value="$(arg p_num)"/>          <!-- 障碍物总数 -->
+        
+        <!-- 圆柱形障碍物尺寸范围 -->
+        <param name="ObstacleShape/lower_rad" value="0.5"/>          <!-- 最小半径: 0.5米 -->
+        <param name="ObstacleShape/upper_rad" value="0.7"/>          <!-- 最大半径: 0.7米 -->
+        <param name="ObstacleShape/lower_hei" value="0.0"/>          <!-- 最小高度: 地面 -->
+        <param name="ObstacleShape/upper_hei" value="3.0"/>          <!-- 最大高度: 3米 -->        
+
+        <!-- 圆形障碍物参数(备用配置) -->
+        <param name="map/circle_num" value="$(arg c_num)"/>          <!-- 圆形障碍物数量 -->        
+        <param name="ObstacleShape/radius_l" value="0.7"/>           <!-- 半径下限 -->        
+        <param name="ObstacleShape/radius_h" value="0.5"/>           <!-- 半径上限 -->        
+        <param name="ObstacleShape/z_l" value="0.7"/>                <!-- 高度下限 -->        
+        <param name="ObstacleShape/z_h" value="0.8"/>                <!-- 高度上限 -->        
+        <param name="ObstacleShape/theta" value="0.5"/>              <!-- 角度参数 -->        
+
+        <!-- 感知模拟参数 -->
+        <param name="sensing/radius" value="5.0"/>                   <!-- 感知半径: 5米 -->        
+        <param name="sensing/rate"   value="10.0"/>                  <!-- 感知更新频率: 10Hz -->  
+        
+        <!-- 安全约束 -->
+        <param name="min_distance" value="$(arg min_dist)"/>         <!-- 障碍物间最小间距 -->         
+    </node]]>
+    
+    <!-- 【选项2】Perlin噪声地图生成器 (当前也被注释掉，不会运行) -->
+    <![CDATA[node pkg="mockamap" type="mockamap_node" name="mockamap_node" output="screen">  
+        <!-- 话题映射: 将生成的地图发布到全局地图话题 -->
+        <remap from="/mock_map" to="/map_generator/global_cloud"/>
+
+        <!-- 基础参数 -->
+        <param name="seed" type="int" value="127"/>                  <!-- 随机种子 -->
+        <param name="update_freq" type="double" value="0.5"/>        <!-- 地图更新频率: 0.5Hz -->
+
+        <!-- 网格分辨率 -->
+        <param name="resolution" type="double" value="0.1"/>         <!-- 网格大小: 0.1米 -->
+
+        <!-- 地图物理尺寸 -->
+        <param name="x_length" value="$(arg map_size_x_)"/>          <!-- X轴长度 -->
+        <param name="y_length" value="$(arg map_size_y_)"/>          <!-- Y轴长度 -->
+        <param name="z_length" value="$(arg map_size_z_)"/>          <!-- Z轴高度 -->
+
+        <!-- Perlin噪声地形生成参数 -->
+        <param name="type" type="int" value="1"/>                    <!-- 地图类型: 1=Perlin噪声 -->
+        
+        <!-- Perlin噪声控制参数 -->
+        <!-- complexity: 基础噪声频率，值越大地形越复杂，典型范围0.0-0.5 -->
+        <param name="complexity"    type="double" value="0.05"/>     
+        <!-- fill: 障碍物填充百分比，典型范围0.0-0.4 -->
+        <param name="fill"          type="double" value="0.12"/>     
+        <!-- fractal: 分形层数，值越大细节越多 -->
+        <param name="fractal"       type="int"    value="1"/>        
+        <!-- attenuation: 分形衰减系数，典型范围0.0-0.5 -->
+        <param name="attenuation"   type="double" value="0.1"/>      
+    </node]]>
+
+    <!-- ======================= 无人机动力学仿真(完整版-被注释) ======================= -->
+    <!-- 以下是完整的四旋翼动力学仿真+控制器，当前被注释掉以提高计算效率 -->
+    <!-- 
+    <node pkg="so3_quadrotor_simulator" type="quadrotor_simulator_so3" name="drone_$(arg drone_id)_quadrotor_simulator_so3" output="screen">
+        <!- 仿真参数 ->
+        <param name="rate/odom" value="200.0"/>                      <!- 里程计发布频率: 200Hz ->
+        
+        <!- 初始状态设置 ->
+        <param name="simulator/init_state_x" value="$(arg init_x_)"/>   <!- 初始X位置 ->
+        <param name="simulator/init_state_y" value="$(arg init_y_)"/>   <!- 初始Y位置 ->
+        <param name="simulator/init_state_z" value="$(arg init_z_)"/>   <!- 初始Z位置 ->
+
+        <!- ROS话题映射 ->
+        <remap from="~odom" to="drone_$(arg drone_id)_visual_slam/odom"/>              <!- 里程计输出 ->
+        <remap from="~cmd" to="drone_$(arg drone_id)_so3_cmd"/>                        <!- SO3控制命令输入 ->
+        <remap from="~force_disturbance" to="drone_$(arg drone_id)_force_disturbance"/>    <!- 外力扰动输入 ->    
+        <remap from="~moment_disturbance" to="drone_$(arg drone_id)_moment_disturbance"/>  <!- 外力矩扰动输入 ->        
+    </node>
+ 
+    <!- SO(3)控制器节点 ->
+    <node pkg="nodelet" type="nodelet" args="standalone so3_control/SO3ControlNodelet" name="drone_$(arg drone_id)_so3_control" required="true" output="screen">
+        <!- 控制器初始状态 ->
+        <param name="so3_control/init_state_x" value="$(arg init_x_)"/>
+        <param name="so3_control/init_state_y" value="$(arg init_y_)"/>
+        <param name="so3_control/init_state_z" value="$(arg init_z_)"/>
+        
+        <!- 话题映射 ->
+        <remap from="~odom" to="drone_$(arg drone_id)_visual_slam/odom"/>              <!- 状态估计输入 ->
+        <remap from="~position_cmd" to="drone_$(arg drone_id)_planning/pos_cmd"/>      <!- 位置命令输入 ->
+        <remap from="~motors" to="drone_$(arg drone_id)_motors"/>                      <!- 电机控制输出 ->
+        <remap from="~corrections" to="drone_$(arg drone_id)_corrections"/>            <!- 控制修正参数 ->
+        <remap from="~so3_cmd" to="drone_$(arg drone_id)_so3_cmd"/>                   <!- SO3命令输出 ->
+        
+        <!- 控制器参数文件 ->
+        <rosparam file="$(find so3_control)/config/gains_hummingbird.yaml"/>          <!- PID控制增益 ->
+        <rosparam file="$(find so3_control)/config/corrections_hummingbird.yaml"/>    <!- 系统修正参数 ->
+        
+        <!- 物理参数 ->
+        <param name="mass" value="0.98"/>                          <!- 无人机质量: 0.98kg ->
+        <param name="use_angle_corrections " value="false"/>       <!- 不使用角度修正 ->
+        <param name="use_external_yaw "      value="false"/>       <!- 不使用外部偏航控制 ->
+        <param name="gains/rot/z" value="1.0"/>                    <!- Z轴旋转控制增益 ->    
+        <param name="gains/ang/z" value="0.1"/>                    <!- Z轴角速度控制增益 ->        
+    </node> 
+    -->
+
+    <!-- ======================= 简化位置命令转换器(当前使用) ======================= -->
+    <!-- 将位置命令直接转换为里程计信息，跳过复杂的动力学仿真 -->
+    <node pkg="poscmd_2_odom" name="drone_$(arg drone_id)_poscmd_2_odom" type="poscmd_2_odom" output="screen">
+        <!-- 初始位置设置 -->
+        <param name="init_x" value="$(arg init_x_)"/>               <!-- 起始X坐标 -->
+        <param name="init_y" value="$(arg init_y_)"/>               <!-- 起始Y坐标 -->
+        <param name="init_z" value="$(arg init_z_)"/>               <!-- 起始Z坐标 -->
+        
+        <!-- 话题连接 -->
+        <remap from="~command" to="drone_$(arg drone_id)_planning/pos_cmd"/>           <!-- 接收规划器位置命令 -->
+        <remap from="~odometry" to="drone_$(arg drone_id)_$(arg odometry_topic)"/>     <!-- 输出里程计信息 -->
+    </node>
+
+    <!-- ======================= 可视化模块 ======================= -->
+    <!-- 在RViz中显示无人机位姿、轨迹和状态 -->
+    <node pkg="odom_visualization" name="drone_$(arg drone_id)_odom_visualization" type="odom_visualization" output="screen">
+        <!-- 数据源 -->
+        <remap from="~odom" to="drone_$(arg drone_id)_visual_slam/odom"/>              <!-- 里程计数据输入 -->
+        
+        <!-- 可视化颜色设置(RGBA) -->
+        <param name="color/a" value="1.0"/>                         <!-- 透明度: 100%(完全不透明) -->
+        <param name="color/r" value="0.0"/>                         <!-- 红色分量: 0 -->
+        <param name="color/g" value="0.0"/>                         <!-- 绿色分量: 0 -->
+        <param name="color/b" value="0.0"/>                         <!-- 蓝色分量: 0 -> 结果=黑色 -->
+        
+        <!-- 显示参数 -->
+        <param name="covariance_scale" value="100.0"/>              <!-- 位置不确定性显示缩放 -->
+        <param name="robot_scale" value="0.35"/>                    <!-- 无人机模型显示大小: 35% -->
+        <param name="tf45" value="false"/>                          <!-- 不使用45度坐标转换 -->
+        <param name="drone_id" value="drone_id"/>                   <!-- 显示的无人机标识 -->
+    </node>
+
+    <!-- ======================= 局部感知模块 ======================= -->
+    <!-- 模拟深度相机，生成局部环境的点云数据 -->
+    <node pkg="local_sensing_node" type="pcl_render_node" name="drone_$(arg drone_id)_pcl_render_node" output="screen">
+        <!-- 相机内参配置 -->
+        <rosparam command="load" file="$(find local_sensing_node)/params/camera.yaml" />
+        
+        <!-- 感知能力参数 -->
+        <param name="sensing_horizon"  value="5.0" />               <!-- 最大感知距离: 5米 -->
+        <param name="sensing_rate"     value="30.0"/>               <!-- 感知数据更新频率: 30Hz -->
+        <param name="estimation_rate"  value="30.0"/>               <!-- 状态估计频率: 30Hz -->
+        
+        <!-- 地图范围(与全局地图一致) -->
+        <param name="map/x_size"     value="$(arg map_size_x_)"/>   <!-- 感知区域X轴范围 -->
+        <param name="map/y_size"     value="$(arg map_size_y_)"/>   <!-- 感知区域Y轴范围 -->
+        <param name="map/z_size"     value="$(arg map_size_z_)"/>   <!-- 感知区域Z轴范围 -->
+        
+        <!-- 话题连接 -->
+        <remap from="~global_map" to="/map_generator/global_cloud"/>                    <!-- 全局地图输入 -->
+        <remap from="~odometry"   to="/drone_$(arg drone_id)_$(arg odometry_topic)"/>  <!-- 位置信息输入 -->
+        <remap from="~pcl_render_node/cloud"   to="/drone_$(arg drone_id)_pcl_render_node/cloud"/>  <!-- 局部点云输出 -->
+    </node>
+</launch>
+
+<!-- 
+======================= 系统工作流程总结 =======================
+
+单架无人机仿真系统的数据流:
+1. 【规划器】生成位置命令 → /drone_X_planning/pos_cmd
+2. 【位置转换器】接收命令 → 直接转为里程计数据 → /drone_X_visual_slam/odom
+3. 【感知系统】根据位置 → 提取5米范围内点云 → /drone_X_pcl_render_node/cloud
+4. 【可视化】显示轨迹和状态 → RViz界面
+
+当前配置特点:
+✓ 使用简化动力学(快速仿真,不考虑真实物理)
+✓ 30Hz高频感知更新(适合快速飞行)
+✓ 5米感知半径(适合密集障碍物环境)
+✓ 支持多机并行仿真(通过drone_id区分)
+✗ 未启用地图生成器(地图由formation.launch中的全局生成器提供)
+✗ 未启用真实四旋翼动力学(为了提高仿真效率)
+-->

@@ -1,0 +1,102 @@
+<launch>
+
+  <!-- ======================= 输入参数定义 ======================= -->
+  <!-- 这些参数由上层launch文件(如formation.launch)传入 -->
+  
+  <!-- 无人机唯一标识符 (0-6为普通无人机，999为广播节点) -->
+  <arg name="drone_id"/>
+  
+  <!-- UDP广播IP地址 (本机广播: 127.0.0.255) -->
+  <arg name="broadcast_ip"/>
+
+  <!-- ======================= UDP通信桥接节点 ======================= -->
+  <!-- 负责7架无人机之间的轨迹信息广播通信 -->
+  <node pkg="swarm_bridge" name="drone_$(arg drone_id)_bridge_node" type="bridge_node_udp" output="screen">
+    <!-- 节点说明:
+         - pkg="swarm_bridge": 集群通信功能包
+         - name="drone_X_bridge_node": 节点名称，X为无人机ID
+         - type="bridge_node_udp": 执行的程序（UDP通信版本）
+         - output="screen": 日志输出到终端
+    -->
+  
+    <!-- 里程计话题重映射 -->
+    <!-- 从VINS里程计话题映射到本地里程计话题 -->
+    <remap from="~my_odom" to="/vins_estimator/imu_propagate"/>
+    <!-- 说明:
+         - VINS-Mono是视觉惯性导航系统
+         - imu_propagate是IMU预积分的里程计输出
+         - 用于无人机位置和速度估计
+    -->
+
+    <!-- UDP网络通信参数 -->
+    <!-- 广播IP地址配置 -->
+    <param name="broadcast_ip" value="$(arg broadcast_ip)" type="string"/>
+    <!-- 127.0.0.255 表示本机网络广播地址
+         所有在同一台电脑上运行的无人机都能接收到广播
+    -->
+    
+    <!-- 当前无人机ID -->
+    <param name="drone_id" value="$(arg drone_id)"/>
+    <!-- ID作用:
+         - 标识轨迹数据来源
+         - 避免接收自己发送的消息
+         - 用于集群协调和冲突检测
+    -->
+    
+    <!-- 里程计数据最大发送频率 -->
+    <param name="odom_max_freq" value="70"/>
+    <!-- 单位: Hz (每秒70次)
+         限制网络带宽使用，避免UDP拥塞
+         高频率确保轨迹信息实时同步
+    -->
+
+  </node>
+
+  <!-- ======================= 轨迹到里程计转换节点 ======================= -->
+  <!-- 将规划的轨迹转换为里程计格式，供其他模块使用 -->
+  <node pkg="swarm_bridge" name="traj2odom_node" type="traj2odom_node" output="screen">
+    <!-- 节点功能:
+         - 接收EGO-Planner生成的轨迹数据
+         - 转换为标准的nav_msgs/Odometry格式
+         - 发布给需要里程计信息的其他节点
+    -->
+
+    <!-- 里程计输出频率 -->
+    <param name="odom_hz" value="30" />
+    <!-- 单位: Hz (每秒30次)
+         适中的频率平衡了:
+         - 实时性要求 (控制系统响应)
+         - 计算资源消耗 (CPU和网络)
+    -->
+
+  </node>
+
+</launch>
+
+<!-- 
+======================= 系统通信架构总结 =======================
+
+数据流向:
+1. 轨迹规划:
+   EGO-Planner → 生成B样条轨迹 → bridge_node_udp
+
+2. UDP广播:
+   bridge_node_udp → UDP广播 (127.0.0.255) → 所有其他无人机
+
+3. 轨迹接收:
+   其他无人机的bridge_node_udp → 接收UDP数据 → 更新集群轨迹信息
+
+4. 格式转换:
+   traj2odom_node → 轨迹转里程计 → 供其他模块使用
+
+通信特点:
+✓ 分布式P2P架构: 无中心节点，每架无人机对等
+✓ 实时性: 70Hz高频数据同步
+✓ 可靠性: UDP广播确保所有节点都能接收
+✓ 可扩展性: 支持动态增减无人机数量
+
+在formation.launch中的调用:
+- 创建1个广播桥接 (drone_id=999)
+- 每架无人机都连接到这个广播网络
+- 实现7架无人机的轨迹信息实时共享
+-->

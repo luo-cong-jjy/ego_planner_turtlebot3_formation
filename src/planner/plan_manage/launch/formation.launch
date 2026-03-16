@@ -1,0 +1,163 @@
+<launch>
+    <!-- =========================== 全局参数配置 =========================== -->
+    <!-- 仿真环境大小设置 (米) -->
+    <arg name="map_size_x" value="80.0"/>    <!-- 地图X轴范围: 80米 -->
+    <arg name="map_size_y" value="80.0"/>    <!-- 地图Y轴范围: 80米 -->
+    <arg name="map_size_z" value=" 3.0"/>    <!-- 地图Z轴范围: 3米高度 -->
+    
+    <!-- 里程计话题名称 (所有无人机共用) -->
+    <arg name="odom_topic" value="visual_slam/odom" />
+    
+    <!-- =========================== 集群通信模块 =========================== -->
+    <!-- 启动UDP通信桥接，用于7架无人机间的信息共享 -->
+    <include file="$(find swarm_bridge)/launch/bridge_udp.launch">
+        <arg name="drone_id" value="999"/>           <!-- 广播节点ID -->
+        <arg name="broadcast_ip" value="127.0.0.255"/>  <!-- 本地广播IP -->
+    </include>
+    
+    <!-- =========================== 环境地图生成器 =========================== -->
+    <!-- 生成随机森林环境，包含150个圆柱形障碍物 -->
+    <node pkg="map_generator" name="random_forest" type="random_forest" output="screen">
+        <!-- 地图物理尺寸 -->
+        <param name="map/x_size"     value="55.0" />    <!-- 障碍物区域: 55x55米 -->
+        <param name="map/y_size"     value="55.0" />
+        <param name="map/z_size"     value="3" />       <!-- 高度: 3米 -->
+        <param name="map/resolution" value="0.1"/>       <!-- 地图分辨率: 0.1米/格 -->
+        
+        <!-- 障碍物生成参数 -->
+        <param name="ObstacleShape/seed" value="1"/>         <!-- 随机种子 -->
+        <param name="map/obs_num"    value="150"/>           <!-- 障碍物总数: 150个 -->
+        <param name="ObstacleShape/lower_rad" value="0.5"/>  <!-- 最小半径: 0.5米 -->
+        <param name="ObstacleShape/upper_rad" value="0.7"/>  <!-- 最大半径: 0.7米 -->
+        <param name="ObstacleShape/lower_hei" value="0.0"/>  <!-- 最小高度: 地面 -->
+        <param name="ObstacleShape/upper_hei" value="3.0"/>  <!-- 最大高度: 3米 -->
+        
+        <!-- 圆形障碍物参数 (与上面重复，可能是备用配置) -->
+        <param name="map/circle_num" value="150"/>
+        <param name="ObstacleShape/radius_l" value="0.7"/>
+        <param name="ObstacleShape/radius_h" value="0.5"/>
+        <param name="ObstacleShape/z_l" value="0.7"/>
+        <param name="ObstacleShape/z_h" value="0.8"/>
+        <param name="ObstacleShape/theta" value="0.5"/>
+        
+        <!-- 传感器参数 -->
+        <param name="sensing/rate"   value="1.0"/>       <!-- 传感器更新频率: 1Hz -->
+        <param name="min_distance" value="1.2"/>        <!-- 障碍物间最小距离: 1.2米 -->
+    </node>
+    
+    <!-- =========================== 7架无人机编队配置 =========================== -->
+    <!-- 每架无人机都运行完整的EGO-Planner系统 -->
+    <!-- 编队布局示意图 (俯视):
+         六边形编队 - 中心一架，周围六架
+         
+              drone0(-31,-0.5)    drone1(-31,0.5)
+                      \              /
+                       \            /
+         drone2(-32,-1) - drone3(-32,0) - drone4(-32,1)
+                       /            \
+                      /              \
+              drone5(-33,-0.5)    drone6(-33,0.5)
+              
+         说明: drone3在中心，其余6架围成六边形
+    -->
+    <!-- 无人机0 - 编队前方左侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="0"/>              <!-- 无人机ID -->
+        <arg name="init_x"     value="-31"/>            <!-- 初始X坐标 -->
+        <arg name="init_y"     value="-0.5"/>           <!-- 初始Y坐标 -->
+        <arg name="init_z"     value="0.0"/>            <!-- 阶段一固定地面高度 -->
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机1 - 编队前方右侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="1"/>
+        <arg name="init_x"     value="-31"/>
+        <arg name="init_y"     value="0.5"/>            <!-- 与drone0左右对称 -->
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机2 - 编队左侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="2"/>
+        <arg name="init_x"     value="-32"/>            <!-- 中间行 -->
+        <arg name="init_y"     value="-1"/>             <!-- 最左侧 -->
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机3 - 编队中心 (Leader) -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="3"/>
+        <arg name="init_x"     value="-32"/>
+        <arg name="init_y"     value="0"/>              <!-- 编队中心位置 -->
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机4 - 编队右侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="4"/>
+        <arg name="init_x"     value="-32"/>
+        <arg name="init_y"     value="1.0"/>            <!-- 最右侧 -->
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机5 - 编队后方左侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="5"/>
+        <arg name="init_x"     value="-33"/>            <!-- 后排 -->
+        <arg name="init_y"     value="-0.5"/>
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 无人机6 - 编队后方右侧 -->
+    <include file="$(find ego_planner)/launch/run_in_sim.launch">
+        <arg name="drone_id"   value="6"/>
+        <arg name="init_x"     value="-33"/>
+        <arg name="init_y"     value="0.5"/>            <!-- 与drone5左右对称 -->
+        <arg name="init_z"     value="0.0"/>
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)"/>
+    </include>
+    
+    <!-- 
+    编队总结:
+    - 7架无人机形成六边形编队
+    - drone3 位于编队中心 (Leader)
+    - 其余6架围成六边形: 前2架、中2架、后2架
+    - 所有无人机高度统一为1.5米
+    - 每架无人机运行独立的EGO-Planner系统
+    - 通过UDP广播进行集群协调
+    - 在55x55米障碍物环境中编队飞行
+    
+    编队几何特性:
+    - 前后间距: 1-2米
+    - 左右间距: 0.5-1米  
+    - 中心到边缘距离: 约1-1.5米
+    - 适合协调避障和信息传递
+    -->
+</launch>
